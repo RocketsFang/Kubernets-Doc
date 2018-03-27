@@ -19,7 +19,7 @@ IP指向Service而后者将请求重定向到具体的应用。
 
 Kubernetes中的Service简单来说和Pod一样就是一个Rest对象，和所有的Rest对象一样，Service的定义能够被POST转发到APIServer借以创建一个新的对象。比如，你有一组Pod
 他们每个Pod都对外暴露9376端口，并且他们也都定义了一个‘app=MyApp’的标签。
-'''
+```
 king: Service
 apiVersion: v1
 matadata:
@@ -31,8 +31,9 @@ spec:
   - protocol: TCP
     port: 80
     targetPort: 9376
- '''
- 这段描述将会创建一个名称为“my-service”的Service对象，他会将目标TPC端口为9376的访问重定向到有“app=MyApp”标签的Pod。这个Service也被指定了一个IP地址（有
+ ```
+
+这段描述将会创建一个名称为“my-service”的Service对象，他会将目标TPC端口为9376的访问重定向到有“app=MyApp”标签的Pod。这个Service也被指定了一个IP地址（有
  时被称之为集群IP地址），service代理会使用这个地址。Service选择器会不断的检查并且所有的访问结果都会被POST到一样被称为“My-Service"的Endpoints对象。
  
  我们需要注意的是Service能够将请求Port映射到人一个targetPort定义上。默认的targetPort将会被赋予和port值一样的值。更有趣儿的是targetPort可以是字符串，
@@ -49,7 +50,7 @@ spec:
  * 你可能要迁移部分的工作任务到Kubernetes集群中，剩下的工作任务则继续保留在Kubernetes集群之外
 
 如果满足上面任何一个场景你都能定义一个没有选择器的Service
-'''
+```
 kind: Service
 apiVersion: v1
 metadata:
@@ -59,10 +60,9 @@ spec:
   - protocol: TCP
     port: 80
     targetPort: 9376
-'''
-
+```
 由于这是一个没有selector的service相关的Endpoints对象将不会被创建。但是你可以手工的将他映射到你定义的endpoints上去
-'''
+```
 kind: Endpoints
 apiVersion: v1
 metadata:
@@ -72,14 +72,14 @@ subsets:
       - ip: 1.2.3.4
     ports:
       - port: 9376
-'''
+```
 
 这里要注意：Endpoints的ip地址可能不会是回环地址（127.0.0.0/8），链路本地地址（169.254.0.0/16），链路本地多播地址（224.0.0.0/24）。
 
 访问一个有选择器的Service和访问一个没有选择器的Service方法是一样的。访问会被路由到关联的endpoints对象上去。
 
 一个定义有ExternalName service是一个没有选择器的service中的特例，他没有定义任何的端口和Endpoint，然而，它被用来访问集群外的外部Service的一种途径。
-'''
+```
 kind: Service
 apiVersion: v1
 metadata:
@@ -88,7 +88,8 @@ metadata:
 spec:
   type: ExternalName
   externalName: my.database.example.com
-'''
+```
+
 当寻找主机my-service.prod.svc.cluster时，集群的DNS服务将会返回CNAME记录中的my.database.example.com值。这种使用服务的方式和其他方法一样只不过它是在DNS
 层上就进行了转发并没有代理和请求的转发。一会儿你会决定把你的数据库迁移到你的集群中吗？然后你就能启动它的Pods，定义合适的选择器或者endpoints然后更改
 service的类型。
