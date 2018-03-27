@@ -236,10 +236,64 @@ Kubernetes的ServiceType属性值用来设置服务的暴露类型，默认是Cl
 
 如果云服务提供商可以个提供负载均衡功能，我们可以通过配置type字段来设置LoadBalancer来为你的Service获得一个负载均衡能力。实际的负载均衡配置是一个异步的，配置过程的状态信息发布在Services的这个字段中。比如：
 ```
-
+kind: Service
+apiVersion: v1
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: MyAp
+  Ports:
+  - protocol: TCP
+    port: 80
+    targetPort: 9376
+  clusterIP: 10.0.171.239
+  loadBalanceIP: 78.11.24.19
+  type: LoadBalancer
+status:
+  loadBalancer:
+    ingress:
+    - ip: 146.148.47.155
 ```
-  
-  
+
+来自这个外部负载均衡器分发的流量就会被代理给后端的Pods，实际的工作逻辑依赖于云服务提供商的配置。一些提供商允许指定loadBalancerIP地址。这样一来，负载均衡器就会以用户指定的IP地址工作。否则一个临时的负载均衡IP地址就会分配给这个负载均衡器。如果指定了负载均衡IP地址但是云服务提供商不支持这个功能那么配置将会忽略。
+
+Azure服务的注意事项：要使用用户自定义的loadBalancerIP值，得实现创建出这个公共的IP地址资源，它必须是和集群在同一个资源组中。分配这个指定的IP地址给loadBalancerIP。通过在配置文件的securityGroupName字段中检查配置非否生效。
+
+## 内部的负载均衡器
+
+一个混合的环境中有时候需要在同一个VPC内部路由流量。
+
+在一个水平拆分的DNS环境中，你可能需要既能将你的Pod提供的service路由到外部也需要在内部路由。
+
+这就要基于具体的云服务提供商在Service定义中加入以下的注释。
+
+## 外部IPs
+
+如果有外部IPs需要被路由到一个或多个集群节点，Kubernetes的服务可以被暴露给这些外部IPs。进入集群的流量中有externalIP会根据服务的端口，路由到其中一个服务端点。Kubernetes不会管理externalIPs，这些是集群管理者来负责的。
+
+在ServiceSpec中，extrenalIPs可以和任何一个ServiceType一同使用。在以下的例子中，“my-service”可以被客户端在80.11.12.10：80上访问。
+```
+kind: Service
+apiVersion: v1
+metadata:
+  name: my-service
+spec:
+  selector:
+    app: myApp
+  ports:
+  - name: http
+    protocol: TCP
+    port: 80
+    targetPort: 9376
+  externalIPs:
+  - 80.11.12.20
+```
+
+# 不足
+
+使用用户空间代理virtual IPs，这个只适合于规模中等的容量，不适合于十分庞大拥有成千上万服务的集群。请浏览[Deisgn]
+
   
 
 
