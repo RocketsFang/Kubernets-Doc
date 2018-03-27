@@ -94,7 +94,12 @@ spec:
 层上就进行了转发并没有代理和请求的转发。一会儿你会决定把你的数据库迁移到你的集群中吗？然后你就能启动它的Pods，定义合适的选择器或者endpoints然后更改
 service的类型。
 
+# 虚拟IPs和服务代理
+每个Kubernetes的Node都会运行一个kube-proxy。kube-proxy负责为Service实现虚拟IP形式，当然ExternalName除外。在Kubernetes1.0中，Services是一个在IP层上的TCP&UDP 4层结构，代理完完全全的在用户命名空间里。到了Kubernetes1.1，Ingress API的引入则将其变为建立在HTTP之上的7层结构，iptables代理模式也被实现。而这一功能从Kubernetes1.2开始成为了默认的配置。直到Kubernets1.8-beta版本， IPVS代理被引入。 下面我们来看看这些Services的实现：
+## proxy-mode： userspace
+这种模式下，kube-proxy监控Kubernetes 主节点上Services对象和Endpoints对象的加入或者删除。每一个Service他都会在Node节点上随机的挑选一个端口并将其开放。任何到这个代理端口上的链接都将会被代理到Service的后端Pods上（也可以说是Endpoints上）。具体挑选哪一个Pod则要看Service的SessionAffinity定义。最后，加入iptables的控制规则来将流量导入到Service的ClusterIP（虚拟的IP地址）和port上后者转发这个流量到代理端口。默认情况下，对于后端的Pod选择是轮询的方式。
 
+https://d33wubrfki0l68.cloudfront.net/b8e1022c2dd815d8dd36b1bc4f0cc3ad870a924f/1dd12/images/docs/services-userspace-overview.svg
 
  
  
