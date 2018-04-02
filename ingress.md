@@ -133,10 +133,31 @@ foo.bar.com ---|                 |-> foo.bar.com s1:80
                | 178.91.123.132  |
 bar.foo.com ---|                 |-> bar.foo.com s2:80
 ```
-以下的Ingress对象描述了负载均衡器怎样基于主机头部路由请求。
+以下的Ingress对象描述了负载均衡器怎样基于主机头部信息路由请求。
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: test
+spec:
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - backend:
+          serviceName: s1
+          servicePort: 80
+  - host: bar.foo.com
+    http:
+      paths:
+      - backend:
+          serviceName: s2
+          servicePort: 80
+```
+默认的后端：一个没有规则的Ingress，就像之前的部分描述的，他会把所有的流量都发送到默认的后端上去。你也可以用同样的技术告诉负载均衡器怎么去找你的404页面通过一定的规则和默认的后端。
 
-
-
+## TLS
+你可以提供TLS的私钥和证书给Secret对象来为Ingress设置安全性。
 
 
 
