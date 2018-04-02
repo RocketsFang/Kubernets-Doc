@@ -157,13 +157,68 @@ spec:
 默认的后端：一个没有规则的Ingress，就像之前的部分描述的，他会把所有的流量都发送到默认的后端上去。你也可以用同样的技术告诉负载均衡器怎么去找你的404页面通过一定的规则和默认的后端。
 
 ## TLS
-你可以提供TLS的私钥和证书给Secret对象来为Ingress设置安全性。
+你可以提供TLS的私钥和证书给Secret对象来为Ingress设置安全性。目前Ingress只支持单一的TLS端口 - 443端口并且假设是TLS终端。如果在Ingress的TLS配置部分指定了不同的主机名，他们将会通过SNI(Servre Name Indication) TLS扩展根据主机名来实现在同一端口的多路复用。 TLS secret必须包含包含了证书和私钥的名值对 tls.crt和tls.key。
+```
+apiVersion: v1
+data:
+  tls.crt: base64 encoded cert
+  tls.key: base64 encoded key
+kind: Secret
+metadata:
+  name: testsecret
+  namespace: default
+type: Opaque
+```
+引用这个secret的Ingress将会同质Ingress控制器在客户端和负载均衡器之前使用TLS启用安全通道：
+```
+apiVersion: extensions/v1beta1
+kind: Ingress
+metadata:
+  name: no-rules-map
+spec:
+  tls:
+  - secretName: testsecret
+  backend:
+    serviceName: s1
+    servicePort: 80
+```
+>注意不同的Ingress控制器在支持TLS功能上有很大不同，请仔细阅读各个平台的Ingresss控制文档来了解TLS是怎样工作的。
 
+### 负载均衡器
+Ingress控制器启动载入一些适用于所有Ingress对象的负载均衡策略，比如：负载均衡算法，后端权重设计等等。其他高级的负载功能还没有通过Ingress暴露，这些功能则可以通过‘service loadbalancer’章节了解。
+尽管集群的健康检查没有通过Ingress直接暴露，但Kubernetes还是提供了在一个层面上的解决方案比如：准备度探针。
 
+### 更新Ingress
+如果想加入一个新的主机名到Ingress中，你可以更新他的资源设置
+```
+kubectl get ing
 
-
-
-
+kubectl edit ing test
+```
+这样就会有一个编辑器让你编辑这个已经存在的yaml文件，我们可以加入这个新的主机名称
+```
+spec:
+  rules:
+  - host: foo.bar.com
+    http:
+      paths:
+      - backend:
+          serviceName: s1
+          servicePort: 80
+        path: /foo
+   - host: bar.baz.com
+     http:
+       paths:
+       - backend:
+           serviceName: s2
+           servicePort: 80
+         path: /foo
+``` 
+然后保存这个更新后的资源文件到APIserver上，APIServer会通知Ingress控制器去重新配置负载均衡器。
+```
+kubectl get ing
+```
+也可以通过执行kubectl replace -f命令来使用更新后的yaml文件来更新Ingress对象。
 
 
 
