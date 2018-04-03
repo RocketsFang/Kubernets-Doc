@@ -25,8 +25,18 @@ Services，比如：有个‘foo'的Service，所有的容器都会在他们的�
 FOO_SERVICE_HOST=<the host the Service is running on>
 FOO_SERVICE_PORT=<the port the Service is running on>
 ```
+如果使用代码和Service通讯，不要使用环境变量；使用DNS name of the Service来替换。 Service的环境变量方式只是给很难改动源代码使用DNS方式的遗留软件使用的，这种方式不灵活。
+* 不要为Pod指定hostPort除非他绝对的需要。 当你绑定一个Pod到hostPort，这会限制Pod被安排的地方的数量。 因为每一个<hostIP, hostPort, protocol>组合必须是唯一的，如果没有显示的指定hostIP和protocol，Kubernetes就会默认使用0.0.0.0为hostIP以及TCP作为默认的protocol。
+如果只是为了debug方便，有可以使用apiserver proxy或者kubectl port-forward。
+* 避免使用hostNetwork， 它也会降低Pod能够被安排的地方的数量。
 
+## 使用Labels
+定义并且使用标签来标识应用或者Deployment的语义，比如：{app: myapp, tier: fronted, phase:test, deployment: v3}. 你可以使用标签来为其他资源选择合适的Pods； 比如： 一个Service选择所有的含有标签tire：frontend的Pods
 
+Service可以使用它的选择器来跨多个Deployment。 Deployment可以很方便的更新service而不需要停止它。
+Deployment可以描述一个对象的期望状态，如果改变了的规范描述值被应用到了Deployment，部署控制器就会把实际值更改为这个期望的状态。
+
+* 你可以为了debug目的来操作label。 因为Kubernetes控制器（比如：ReplicaSet)和Service是通过使用选择器选择标签来找到Pods，从Pod上删除相关的标签则意味着这个pod将不会被控制器选中或者不会参与一个服务的响应。如果你删除了一个已经存的Pod的标签， 它的控制器则会创建新的Pod来代替它。 这个功能用来在隔离区环境bug一个之前能很好工做的Pod。
 
 
 
