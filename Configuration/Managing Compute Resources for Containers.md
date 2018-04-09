@@ -75,6 +75,71 @@ kubectl describe nodes e2e-test-minion-group-4lw4
 ### 我的Container被终止了
 你的Container可能会由于资源缺乏而被终止。可以通过kubectl describe pod来检查特定的Pod中的Container是否是由于资源限制而被终止的。
 
+## 本地临时存储
+### kubernetes v1.10新功能
+kubernetes v1.8引入了一个新的资源类型，ephemeral-storage来管理本地的临时存储。 在所有的Kubernetes节点机器上，kubelet的根目录(默认是/var/lib/kubelet)和日志目录被存储在节点的根分区上。这个分区同时也被Pod通过EmptyDir存储，容器日志，镜像层以及容器可写层的方式共享和消费。这个分区是‘临时的’应用程序不可能获得任何性能服务协议。本地临时存储管理只适用于根分区。
+>注意 如果使用了任何可选的运行时分区，根分区将不在存放任何镜像层或者容器的可写层
+
+### 带有临时存储的Pods的资源请求是如何被调度的
+当你创建了一个Pod，Kubernetes调度器就会为这个Pod选择一个节点，每一个节点都有一个最大的本地临时存储可以提供给所有的Pods。调度器负责所有被调度的容器的资源请求之和是小于节点容量的。
+
+### 带有临时存储的Pods的资源限制是如何被执行的
+Container级别的隔离，如果一个Container的可写层和日志对临时存储的使用超过了它的存储限制，整个Pod会被Kubernetes驱逐。对于Pod级别的隔离，如果所有容器的本地临时存储之和以及加上Pod的EmptyDir磁盘容量超过了限制，那么Pod就会被Kubernetes驱逐。
+
+## 扩展资源
+扩展资源是在kubernetes.io域之外完全合格的资源名字。他们可以使集群的管理者发布资源并且用户可以使用的非Kubernetes预定义的资源。
+
+要使用扩展资源，一共有两步。第一集群管理员创建并通知一个扩展资源；第二用户在Pod中请求这个扩展资源。
+
+### 管理扩展资源
+#### Node级别的扩展资源
+节点级别的扩展资源是绑定在节点上的。
+
+#### 设备插件管理的资源
+
+#### 其他资源
+集群管理员提交一个PATH HTTP请求给API server来通知一个新的节点级别的扩展资源，这个请求中可以在status.capacity属性中指定可用的数量。在这之后，节点的status.capacity就会包含新的资源。status。allocatable属性会自动被Kubelet异步的更新。注意由于调度器使用satus.allocatable的属性值来预估Pod的可以用性，所以会有一个段时间的延迟发生在第一次在这个节点上为Pod调度这个扩展资源和请求APIServer在这个节点上启用扩张的资源。
+#### 比如：
+这儿有一个使用CULR命令来组织并发送HTTP请求到APIServer来通知它在节点k8s-node-1上准备五个‘example.com/foo‘扩展资源
+
+#### 集群级别的扩展资源
+集群级别的资源不会被绑到节点上，他们通常是被扩展调度器管理的，这个扩张调度器负责资源的消费、配额等等。
+我们可以通过扩展调度器来管理我们指定的扩展资源。
+
+#### 比如：
+以下是一个调度策略展示的被扩展管理器管理的集群级别扩展资源’example.com/foo‘。
+* 调度器仅仅吧把Pod的资源描述规范中包含对‘example.com/foo‘资源请求的Pod发送给扩展管理器
+* ignoredByScheduler属性中指明调度器不需要检查‘example.com/foo资源在它的PodFitsResource预检查
+
+
+### 扩展资源的消费
+用户可以和请求CPU和内存一样可以在Pod的详细描述规范中消费扩展资源。调度器会负责资源的计数保证不会有过多数量的资源被分配到Pod上。
+>注意 扩展资源会覆盖[不透明的整数资源](https://blog.csdn.net/guizaijianchic/article/details/77841579)。 用户可以使用除了这个被保护的域名命前缀的任何域名命
+
+当在Pod中去消费一个扩展资源是，只要在spec.contaiers[].resources.limits中指定资源名称来作为键值。
+一个Pod被调度成功只有当所有的资源请求被满足，诸如：CPU，内存和任何扩展的资源。否则Pod会一直保持PENDING状态只有当资源请求被满足。
+#### Example
+以下的Pod请求例子是去请求2CPU计算资源和1个example.com/foo扩展资源
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: my-pod
+spec:
+  containers:
+  - name: my-container
+    image: myimage
+    resources:
+      requests:
+        cpu: 2
+        example.com/foo: 1
+      limits:
+        example.com/foo: 1
+```
+
+
+
+
 
 
 
