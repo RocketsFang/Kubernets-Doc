@@ -38,7 +38,57 @@ CPU总是以一个绝对数量来被请求的，不会是相对数量。 所以�
 
 ## Pods的资源限制是怎么实现的
 当kubelet在节点上启动一个容器，它将CPU和内存资源限制值传递给容器运行时，当使用Docker时：
-* 
+* 这个属性的值spec.contaires[].resources.requests.cpu 会被转换成相应系统的core值，这个属性值有可能是碎片化的，并且是1024的倍数。这个值比较大时或者是2会被用到docker run命令的--cpu-shares标志值
+* 这个属性值 spec.containers[].resources.limits.cpu会被转换成它的millicore值并且是100的倍数。结果值为一个container在100毫秒的间隔中能使用的CPU总时间。Container在这个间隔中不能多于这个CPU的共享时间。
+> 默认的CPU配额是100毫秒， CPU最小的配额是1毫秒
+* 这个属性spec.containers[].resources.limits.memory 被转换成整数，将会被用在docker run命令的--memory参数。
+如果container使用的内存超过了它的限制，这个容器会被停止。如果是能重启的，kublet将会和其他运行时失败一样会重启容器。
+如果容器请求内存超过了它的内存限制，不管什么时候一但节点内存耗尽这个容器的Pod将会被不会再被kubelet管理。
+Container可能或不可能被允许超过CPU的限制，但是发生了超额使用CPU容器不会被停止。
+
+怎么确定Container由于资源限制不能被调度或者被停止，参看Troubleshooting章节
+
+## 监控计算资源的使用
+Pod的资源使用是Pod状态报告的一部分。
+如果在集群里面部署了可选的监控程序，Pod的资源使用则可以从监控系统中获得。
+
+## 问题诊断
+### 我的Pod被挂起事件信息显示 failedScheduling
+如果Kubenetes调度器发现没有任何节点上可以再增加Pod时， Pod就不会再被调度直到节点上有可用的资源。 调度器每次会对失败的调度记录一条错误的信息。
+```
+kubectl describe pod frontend | grep -A 3 Events
+events:
+ FirstSeen   LastSeen  Count   From           Suobject                 PathReason               Message
+ 36s            5s       6      scheduler         FailedScheduling     Failed for reason PodExceedsFreeCPU and possiblely others
+```
+在之前的例子里面，名为‘frontend’的Pod由于在节点上CPU资源不足而被调度失败。如果是在节点上内存不足也会有类似的错误信息。一般来说，如果一个Pod被挂起并报出类似的错误信息，可以试试以下的方法：
+* 添加更多的节点
+* 停止没有被使用的Pod，把资源释放给挂起的Pod
+* 检查Pod的资源描述规范中的资源请求没有大过节点的限制。比如所有的节点都有cpu:1的容量，而Pod则被描述为可以请求cpu：1.1 这样一来这个Pod将不会被调度。
+
+可以通过kubectl describe nodes命令来查看
+```
+kubectl describe nodes e2e-test-minion-group-4lw4
+```
+可以配置资源配额功能来限制可以被消费的资源总数。 如果配合命名空间，则能防止所有的资源被一个team占尽。
+
+### 我的Container被终止了
+你的Container可能会由于资源缺乏而被终止。可以通过kubectl describe pod来检查特定的Pod中的Container是否是由于资源限制而被终止的。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
