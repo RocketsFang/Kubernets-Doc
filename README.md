@@ -1,6 +1,7 @@
 # Concepts
 ## 配置
-* [Configuration Best Practices]()
+* [Configuration Best Practices](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Configuration/Configuration%20Best%20Practices.md)
+* [Managing Compute Resources for Containers](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Configuration/Managing%20Compute%20Resources%20for%20Containers.md)
 ## Services, Load Balancing, and Networking
 * [Services](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Services-Load%20Balance-%20and%20Networking/Services.md)
 * [DNS for Services and Pods](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Services-Load%20Balance-%20and%20Networking/DNS%20for%20Services%20and%20Pods)
