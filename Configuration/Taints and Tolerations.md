@@ -104,14 +104,42 @@ kubectl taint nodes nodename special=true:PreferNoSchedule
 * Pod中的容忍描述规范中指定了容忍污点但是没有指定容忍时间tolerationSeconds，那么Pods会一直存在下去
 * Pod中的容忍描述规范中指定了容忍污点也指定了容忍时间，那么着Pods会在时间到期后被驱逐出节点。
 
-另外，Kubernete1.6中引入了alpha功能节点问题代理。换句话说就是，节点控制器会在定义的条件符合情况下自动加污点给节点，
+另外，Kubernete1.6中引入了alpha功能节点问题代理。换句话说就是，节点控制器会在定义的条件符合情况下自动加污点给节点，这些内建的污点有：
+* node.kubernetes.io/not-ready： 节点没有准备好。 这是NodeCondition的Ready属性是false
+* node.alpha.kubernetes.io/unreachable: 节点控制器连不上节点。这对应NodeCondition的Ready属性是unknown
+* node.kubernetes.io/out-of-disk: 节点所在的磁盘损坏
+* node.kubernetes.io/memory-pressure: 节点机器有内存压力
+* node.kubernetes.io/disk-pressure: 节点机器有磁盘空加压力
+* node.kubernetes.io/network-unavailable: 节点所在的机器网络有问题
+* node.cloudprovider.kubernetes.io/uninitialized: 当kubelet是从外部的云供应商启动的， Kubernetes会设置这个污点到一个节点标识它不可用。
+
+如果使用了TaintBasedEvictions alpha功能（通过添加TaintBasedEviction=true参数给Kubenters控制器管理器），这些污点就会自动的被加入到节点控制器或kubelet然后正常的基于Ready NodeCondition的驱逐节点上Pod的逻辑就会失效。（注意为了保留已经存在的因为节点问题而需要驱逐Pod的限制频率逻辑，系统实际上是以限制频率的方式加入的这些污点。）结合tolerationSeconds这个属性，这个alpha功能能允许在发生一个或多个问题时Pod可以在节点上停留多长时间。
+
+比如说，有一个应用由于有很多的本地状态要维持所以即便有网络问题发生也要在一个节点上长时间的绑定， 理想情况下是网络分离问题可以被修复然后驱逐Pod的行动被取消。 那么Pod对应的容忍规范是这样的：
+```
+tolerations:
+- key: "node.alpha.kubernetes.io/unreachable"
+  operator: "Exists"
+  effect: "NoExecute"
+  tolerationSeconds: 6000
+```
+除非用户已经配置了对node.kubernetes.io/not-ready的容忍，不然Kubernetes会自动添加node.kubernetes.io/not-ready的容忍配置并设置tolerationSeconds=300. 同样的，除非用户已经提供了node.alpha.kubernetes.io/unreadble容忍配置，不然Kubernetes也会自动的加入node.alpha.kubernetes.io/unreachable容忍并设置tolerationSeconds=300.
+
+这些自动加入的容忍保证了当这样的问题发生后Pod的默认在一个节点上保留5分钟的行为保留。有两个默认的容忍是被DefaultTolerationSeconds 准入控制器加入的。DaemonSet Pod会配置以下影响为NoExecte的污点并设置tolerationSeconds属性为空：
+* node.alpha.kubernetes.io/unreachable
+* node.kuberetes.io/not-ready
+
+这就保证了DaemonSet Pods永远不会由于上述问题而被驱逐出节点。
 
 
 
+## 根据条件污染节点
+Kuebernetes1.8里面引入了根据节点的状况由节点管理器创建污点。 当这个功能被使用后（你可以通过加入TaintNodesByCondition=true在--feature-gate参数里面，比如： --feature-gates=FootBar=true, TaintNOdesByCondition=true), 调度器就不会检查节点的状况，而是去检查节点的污点。 这样能保证节点的状况不会影响在节点上面的调度。 用户可以通过添加相应的容忍到Pod上来忽略某些节点的问题。
 
-
-
-
+为了防止启用的功能不会使DaemonSets不工作， 从1.8开始DaemonSet控制器自动添加以下的NoSchedule容忍到所有的守护进程中：
+* node.kubernetes.io/memory-pressure
+* node.kubernetes.io/disk-pressure
+* node.kubernetes.io/out-of-disk
 
 
 
