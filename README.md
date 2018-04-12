@@ -4,6 +4,7 @@
 * [Managing Compute Resources for Containers](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Configuration/Managing%20Compute%20Resources%20for%20Containers.md)
 * [Assigning Pods to Nodes](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Configuration/Assigning%20Pods%20to%20Nodes.md)
 * [Taints and Tolerations](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Configuration/Taints%20and%20Tolerations.md)
+* [Secrets](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Configuration/Secrets.md)
 ## Services, Load Balancing, and Networking
 * [Services](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Services-Load%20Balance-%20and%20Networking/Services.md)
 * [DNS for Services and Pods](https://github.com/RocketsFang/Kubernets-Doc/blob/master/Services-Load%20Balance-%20and%20Networking/DNS%20for%20Services%20and%20Pods)
