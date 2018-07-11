@@ -140,7 +140,104 @@ spec:
 ```
 
 ## Job 模式
-Job对象可以被用来支持实现稳定的并行执行的pods，他们并不是被设计成常见的科学计算中的需要彼此密切通信的并行过程。
+Job对象可以被用来支持实现稳定的并行执行的pods，他们并不是被设计成常见的科学计算中的需要彼此密切通信的并行过程。它不支持可以并行运行的一系列独立的但
+又相关的工作单元。他们跟多的用于邮件发送，渲染框架，扫描一个区间的NoSql键值等等。
+在复杂的系统中，可能会有多个不同系列的工作单元。这里我们只考虑一个工作单元，用户想把他们一起做完用job批处理。
+这里列出一些不同的并行处理计算的模式，他们有各自的优缺点。权衡结果如下：
+* 每一个Job对象负责一个工作单元与一个job对象负责所有的工作单元。后者跟适用于大量的工作单元。要是使用前者的话会对用户系统造成负担
+* 用相同数量的pod来完成相同数量的工作单元，用一个pod来完成多个工作单元。 前者很明显只需要少量的对已有的code和containers的改动。 后者更适用于大量的
+工作单元，和之前的原因一样
+* 多个方法共同用一个工作队列，这个的需要一个队列服务，要对已有的程序做修改来世他们利用这个工作队列。 其他方法会更适用于一个已经被容器话的应用
+
+权衡列表
+
+Pattern | Single Job Object | Fewer Pods than work items? | Use app unmodified? | Works in Kube 1.1?
+---- | --- | --- | --- | --- 
+Job Template Expansion |   |   | ✓ | ✓ 
+Queue with Pod per Work Item | ✓ |  | sometime | ✓
+Queue with Variable Pod Count | ✓ | ✓ |  | ✓
+Single Job with Static Work assignment | ✓ |  | ✓ |
+
+当你用.spec.completion指定完成， 那么每一个由Job控制器创建的pod就都还有相同的spec。这就意味着所有的pod都将包含有相同的命令行，相同的存储，相同的
+环境变量。这些模式就是用不同的方法来安排pod去做不同的事情。
+
+## 高级用法
+### 定制你自己的pod选择器
+通常情况下，当我们创建一个Job对象时，我们不需要指定.spec.selector，当job被创建时系统默认的逻辑会自动添加这个字段。它会选择一个不会与其他Job重复的
+值。 
+然而，在一些个场景中，我们可能需要覆盖这个自动生成的值。我们可以使用.spec.selector。
+当我们选择这样去做的时候，一定要小心，如果这个标签选择器不是唯一的，那么它将会命中不相关的pods，这些不相关的pods会被删除掉，或者Job会用这些个pods
+来计算工作量的完成，或者这个Job亦或者这个Job和被影响到的Job都不会创建pods或者执行pod来完成工作量。 这个不唯一的标签选择器还会导致其他的控制器比如：
+ReplicationController和他的pods不可预见的问题。Kubernets不会去检查阻止用户这么去做，如果我们自定义了.spec.selector
+
+这有个例子可供想使用这个功能的用户参考
+假设Job old已经看是执行。 当你期望已经存在的pods继续执行，而将要被创建的剩余的pod去使用不同的pod模板，还想要更改job的名字。 我们不能够通过更新Job
+来达到这个目的，因为这些字段是不可更新的。 因此， 我们要删除job old而保持它的pods继续执行，使用kubectl delete jobs/old --cascade=false， 在删除之前我们的标记一下应该用什么selector。
+```
+kind: Job
+metadata:
+  name: old
+  ...
+spec:
+  selector:
+    matchLabels:
+      job-uid: a8f23sdfa09dfsjlkdsf
+    ...
+```
+当你创建新的job并且使用新的名字new我们的显示的指定相同的标签选择器。 因为已经存在的pods具有标签job-uid=a8f23sdfa09dfsjlkdsf， 他们也会受控于job new。你需要为这个新的job指定manualSelector: true 因为你不需要系统自动为你生成标签选择器
+```
+kind: Job
+metadata:
+  name: new
+  ...
+spec:
+  manualSelector: true
+  selector:
+    matchLabels:
+      job-uid: a8f23sdfa09dfsjlkdsf
+  ...
+```
+这个新的job会有一个新的uid 不同于a8f23sdfa09dfsjlkdsf。 设置manualSelector: true 就是要告诉系统我们知道我们在所生么，并且请忽略这个
+
+## 可选项
+### 裸Pods
+当pod正在运行的node被重启或者失败时，pod会被终止掉并且不会不重启。 然而，Job将会创建新的pods来覆盖这个被终结的pods。 鉴于这个原因，我们推荐使用job而不是裸pod尽管我们的程序只需要一个pod。
+
+### 复制控制器
+Job是可以说是Replication Controller的补偿，一个复制控制器管理的pods是不被期望终结的比如像 web servers，而Job管理的pod是被期望可以终结的比如：批处理jobs。
+正如在Pod生命周期部分论述的，Job是Pod被设置了RestartPolicy为OnFailure或者Never的Pod，如果RestartPolicy不被设置，默认的值则是Always。
+
+### 单一Job启动控制器Pod
+另一个模式是说一个单一的Job创建的pod，而这个pod又去创建了其他的pods，而这个由Job直接创建的pod扮演了这些间接创建的pod的控制器。这样虽然有了灵活性但是它太复杂不易和kubernetes集成。
+这个使用场景可以是一个Job创建了一个Pod这个Pod运行一个脚本这个脚本启动了一个Spark主控制器，运行一个spark设备，然后清理。
+还有个高级的场景是总体的进程保证Job对象去完成工作量，也会完全控制去创建什么样的pods及分配什么样的工作给他们。
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
