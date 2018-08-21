@@ -312,16 +312,294 @@ hostPath卷可以将主机上的目录或者文件挂载到你的Pod中去。 �
 
 除了必须的path属性，对hostPath卷用户还可以可选的指定type属性，type属性支持的值有：
 
+
 | Value | Behavior |
 |:------|:---------|
-||默认为空值这是为了向后兼容，在挂载hostPath卷之前不需要做任何检查|
-|`DirectoryOrCreate`|如果在指定的路径不存在，会创建一个和kubelet在同一个组和所有权且权限值为0755的空目录|
-|`Directory`|指定的目录必须存在|
-|`FileOrCreate`|如果在指定的路径下面没有任何文件，回去创建一个和kubelet在同一个组和所有权且权限值为0644的空文件|
-|`File`|指定的路径下文件必须存在|
-|`Socket`|在指定的路径下UNIX socket必须存在|
-|`CharDevice`|在指定的路径下字符设备必须存在|
-|`BlockDevice`|在指定的路径下块设备必须存在|
+| | 默认为空值这是为了向后兼容，在挂载hostPath卷之前不需要做任何检查 |
+| `DirectoryOrCreate` | 如果在指定的路径不存在，会创建一个和kubelet在同一个组和所有权且权限值为0755的空目录 |
+| `Directory` | 指定的目录必须存在 |
+| `FileOrCreate` | 如果在指定的路径下面没有任何文件，回去创建一个和kubelet在同一个组和所有权且权限值为0644的空文件 |
+| `File` | 指定的路径下文件必须存在 |
+| `Socket` | 在指定的路径下UNIX socket必须存在 |
+| `CharDevice` | 在指定的路径下字符设备必须存在 |
+| `BlockDevice` | 在指定的路径下块设备必须存在 |
+
+
+在使用这些type是要注意，因为：
+1， 在不同的节点上由于不同的文件会导致使用相同配置创建出来的Pods有不同的行为
+2， 按照计划当Kubernetes使用了资源敏感调度方式，hostPath使用type类型会被忽略
+3， 底层主机上创建出来的文件或者文件夹只有root具有写权限。 这样一来你的在特权容器中运行你的进程或者修改文件的权限使得你的进程可以往hostPath卷写入数据。
+实例Pod
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-pd
+spec:
+    containers:
+    - image: k8s.gcr.io/test-webserver
+      name: test-container
+      volumeMounts:
+      - mountPath: /test-pd
+        name: test-volume
+    volumes:
+    - name: test-volume
+      hostPath:
+        path: /data
+        type: Directory
+```
+
+### ISCSI
+ISCSI卷允许一个已经存在的iSCSI卷被挂载到你的Pod中。 和emptyDir卷在Pod被移出Node时卷就会被清除不一样，iscsi卷内容会被保留而且卷很少会被取消挂载。这就意味着iscsi卷可以事先装入数据这些数据可以在Pods间被移交。
+**重要提示** 在使用iscsi卷功能之前你必须有你自己的iscsi服务器而且服务器上已经有可用的卷
+iscsi的特性是它可以被挂载为多个同时只读的卷。这就意味着你可以事先在卷中填充数据然后按照需求给多个Pods提供并行的只读服务。不幸的是iscsi卷只能被挂载为一个读写模式的消费者，多个写模式是不被允许的。
+实例Pod 
+```
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: chap-secret
+type: "kubernetes.io/iscsi-chap"
+data:
+  discovery.sendtargets.auth.username:
+  discovery.sendtargets.auth.password:
+  discovery.sendtargets.auth.username_in:
+  discovery.sendtargets.auth.password_in:
+  node.session.auth.username:
+  node.session.auth.password:
+  node.session.auth.username_in:
+  node.session.auth.password_in:
+
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: iscsipd
+spec:
+  containers:
+  - name: iscsipd-ro
+    image: kubernetes.oi/pause
+    volumeMounts:
+    - mountPath: /mnt/iscsipd
+      name: iscsivol
+  volumes:
+  - name: iscsivol
+    iscsi:
+      targetPortal: 127.0.0.1
+      iqn: iqn.2015-02.example.com:test
+      lun: 0
+      fsType: ext4
+      readOnly: true
+      chapAuthDiscovery: true
+      chapAuthSession: true
+      secretRef:
+        name: chap-secret
+ ---
+ apiVersion: v1
+ kind: Pod
+ metadata:
+   name: iscsipd
+ spec:
+   containers:
+   - name: iscsipd-rw
+     image: kubernetes/pause
+     volumeMounts:
+     - mountPath: /mnt/iscsipd
+       name: iscsipd-rw
+   volumes:
+   - name: iscsipd-rw
+     iscsi:
+       targetPortal: 10.0.2.15:3260
+       portals: ['10.0.2.16:3250']
+       iqn: iqn.2001-05.com.example:storag.kube.sys1.xyz
+       lun: 0
+       fsType: ext4
+       readOnly: true
+ 
+```
+
+### local
+local卷代表了本地存储设备比如：磁盘，分区，目录
+Local卷只能被用在静态创建出来的PersistentVolume。不支持动态提供PersistentVolume。
+相比于hostPath卷，local卷可以以持久的便易的方式被使用，他不需要手动调度Pods到节点上去，系统通过查看PersistentVolume的节点亲和性来感知卷的节点限制。
+然而，local卷仍然受到底层节点可见性的限制不是对所有的应用程序都适用。 如果节点变得不健康，local卷就会变得不可访问，使用这个卷的Pod就会变得不能运行。 应用程序必须依赖底层磁盘的持久性容忍这种可见性，以及潜在的数据丢失。
+
+下面的例子就是使用了local卷和nodeAffinity的PersistentVolue规范描述
+```
+apiVersion: v1
+kind: PersistentVolume
+metadata:
+  name: example-pv
+spec:
+  capacity:
+    storage: 100Gi
+  volumeMode: Filesystem
+  accessModes:
+  - ReadWriteOnce
+  persistentVolumeReclaimPolicy: Delete
+  storageClassName: local-storage
+  local:
+    path: /mnt/disks/ssd1
+  nodeAffinity:
+    required:
+      nodeSelectorterms:
+      - matchExpressions;
+        - key: kubernetes.io/hostname
+          operator: In
+          values:
+          - example-node
+```
+
+当使用local卷时PersistentVolume的nodeAffinity是必须的。 它可以使Kubernetes调度器使用local卷正确的调度Pod到正确的节点上。PersistentVolume volumeMode属性现在能被设置为‘块’（而不是默认值‘Filesystem')来对外暴露local卷为原生块卷。 这个需要启用Alpha功能开关。
+
+当使用local 卷，推荐创建设置volumeBindingMode为WaitForFirstConsumer的StorageClass。 延缓卷的绑定可以考虑更多的节点限制条件，比如资源需求，节点选择器，Pod亲和性和Pod反亲和性。
+
+使用外部的静态提供者可以对local卷的生命周期进行分离管理。
+
+### nfs
+nfs卷可以将已经存在的NFS以共享的方式挂载到你的Pod中。 和emptyDir卷在Pod被移出Node时卷会清空并被删除， nfs的卷内容会被保留并且卷很少被解除挂载。这意味着NFS卷可以被预先填充数据，这写数据可以被移交给Pods。 NFS可以同时挂载多个写程序。
+
+### persistentVolumeClaim
+persistentVolumeClaim被用来挂载PersistentVolume到Pod中。 PersistemVolumes是不需要知道特定云环境详细内容的前提下要求持久的存储。
+
+### projected
+一个计划卷可以将几个已有的卷源映射到相同的目录中去
+目前，一下的卷源可以被作为计划卷：
+* secret
+* downloadAPI
+* configMap
+* servieAccountToken
+
+Pod相关的资源都必须和Pod在同一个namespace中。 在Kubernetes1.11中引入的service account token计划
+
+#### Pod中使用了secret，downloadAPI和configMap的实例
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volume-test
+spec:
+  containers:
+  - name: container-test
+    image: busybox
+    volumeMounts:
+    - name: all-in-one
+      mountPath: "/projected-volume"
+      readOnly: true
+  volumes:
+  - name: all-in-one
+    projected:
+      sources:
+      - secret:
+        name: mysecret
+        items:
+          - key: username
+            path: my-group/my-username
+      - downloadAPI:
+        items:
+          - path: "labels:
+            fieldRef:
+              fieldPath: metadata.labels
+          - path: "cpu_limit"
+            resouceFieldRef:
+              containerName: container-test
+              resource: limits.cpu
+      - configMap:
+          name: myconfigMap
+          items:
+            - key: config
+              path: my-group/my-config
+```
+
+使用了多个不是默认权限secrets的Pod
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: volme-test
+spec:
+  containers:
+  - name: container-test
+    image: busybox
+    volumeMounts:
+    - name: all-in-one
+      mountPath: /projected-volume
+      readOnly: true
+  volumes:
+  - name: all-in-one
+    projected:
+      sources:
+      - secret:
+          name: mysecret
+          items:
+            - key: username
+              path: my-group/my-username
+      - secret:
+          name: mysecret2
+          items:
+            - key: passw0rd
+              path: my-group/my-password
+              mode: 511
+```
+在sources的规范描述下列出了每一个projected卷源。 参数有点儿像两个异常似的。
+* 对于secrets来说，为了和ConfigMap名称一致secretName字段被更改为name
+* defaultMode只能在projected层级指定不能在卷源级别指定。然而，正如上面列出的你可以显示的为每一个projection设置mode
+
+当TokenRequestProjection功能被启用，你可以将当前的serviceaccount的token注入到Pod的指定路径中去。
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: sa-token-test
+spec:
+  containers:
+  - name: container-test
+    image: busybox
+    volumeMounts:
+    - name: token-vol
+      mountPath: /service-account
+      readOnly: true
+  volumes:
+  - name: token-vol
+    projected:
+      sources:
+      - serviceAccountToken:
+          audience: api
+          expirationSeconds: 3600
+          path: token
+```
+实例Pod中有一个包含了注入了service account token的projected卷，这个token可以被Pod的容器用来访问Kubernetes API server。audience字段指定了token的目标受众。 token的接收者必须能够使用在token受众中指定的标识符标识他自己，否则应该拒绝token。 这个字段是可选的默认值是API server的标识符
+
+### portworxVolume
+portworxVolume是一个与Kubernetes超融合运行的弹性块存储层。Portworx指纹存储是在服务器上，这些个服务器基于性能层层排列并在在多个服务器容量之间聚合。 Portworx运行在虚拟机中或者在Liunx裸设备节点上
+
+portworxVolume可以通过Kubernetes被动态创建或者预先创建然后在kubernetes Pod内部被引用。 以下是一个预先提供的Portworx 卷：
+```
+apiVersion: v1
+kind: Pod
+metadata:
+  name: test-portworx-volume-pod
+spec:
+  containers:
+  - image: k8s.gcr.io/test-webserver
+    name: test-container
+    volumeMounts:
+    - mountPath: /mnt
+      name: pxvol
+      
+  volumes:
+  - name: pxvol
+    portworxVolume:
+      volumeID: "pxvol"
+      fsType: "<fs-type>"
+```
+
+
+### secret
+secret卷被用来传递敏感信息，比如： 密码到Pod中去。 你可以把secrets存放到Kubernetes API然后以文件形式挂载他们让Pod使用他们而不需要直接拷贝到Kubernetes。 secret卷以tmpfs为支撑这样他们从不会被写到稳定的存储中去。
+
+
 
 
 
